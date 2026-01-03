@@ -1,0 +1,4 @@
+selenium>=4.0.0
+webdriver-manager>=4.0.0
+streamlit>=1.30.0
+apscheduler>=3.10.0
