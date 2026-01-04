@@ -13,5 +13,8 @@ web: ## Start Streamlit Web UI (Headless by default for server)
 cli: ## Run CLI help
 	PYTHONPATH=. $(PYTHON) src/cli.py --help
 
+app: ## Start GUI Launcher App
+	PYTHONPATH=. $(PYTHON) src/launcher.py
+
 clean: ## Clean up logs and cache
 	rm -rf __pycache__ src/__pycache__ logs/*.log output/*.png output/*.html
