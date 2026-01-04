@@ -11,25 +11,6 @@ from PIL import Image, ImageTk
 import ctypes
 from ctypes import c_long, c_ulong
 
-# Set Appearance Mode
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
-
-import customtkinter as ctk
-from tkinter import messagebox
-import subprocess
-import sys
-import os
-import signal
-import webbrowser
-import threading
-import time
-from PIL import Image, ImageTk
-
-# Set Appearance Mode
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
-
 import customtkinter as ctk
 from tkinter import messagebox
 import subprocess
@@ -43,22 +24,7 @@ from PIL import Image, ImageTk
 import ctypes
 from ctypes import c_long, c_ulong, c_int, c_char_p, POINTER, byref
 
-# Set Appearance Mode
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
-
-import customtkinter as ctk
-from tkinter import messagebox
-import subprocess
-import sys
-import os
-import signal
-import webbrowser
-import threading
-import time
-from PIL import Image, ImageTk
-
-# Set Appearance Mode
+# 外観設定
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
@@ -66,31 +32,31 @@ class LauncherApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         
-        # Window Setup
+        # ウィンドウ設定
         self.title("Touch On Time Launcher")
         self.geometry("400x350")
         
-        # Standard Window (Managed by OS/WSLg)
-        # No extra hacks needed.
+        # 標準ウィンドウ (OS/WSLgによる管理)
+        # 特別なハックは不要
         
-        # Center Window
-        self.center_window()
+        # ウィンドウ配置設定
+        self.setup_window_position()
         
-        # Grid Layout
+        # グリッドレイアウト
         self.grid_columnconfigure(0, weight=1)
-        # Row 0 was Title Bar, now removed.
-        self.grid_rowconfigure(0, weight=1) # Status
-        self.grid_rowconfigure(1, weight=2) # Buttons
-        self.grid_rowconfigure(2, weight=1) # Log
+        # タイトルバーだった行0は削除済み
+        self.grid_rowconfigure(0, weight=1) # ステータス
+        self.grid_rowconfigure(1, weight=2) # ボタン
+        self.grid_rowconfigure(2, weight=1) # ログ
 
-        # Process Handle
+        # プロセスハンドル
         self.process = None
         self.server_url = "http://localhost:8501"
         
-        # Icon Setup
+        # アイコン設定
         self.setup_icon()
         
-        # === 1. Status Section ===
+        # === 1. ステータスセクション ===
         self.status_frame = ctk.CTkFrame(self, corner_radius=10, fg_color="#1a1a1a")
         self.status_frame.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
         
@@ -101,14 +67,14 @@ class LauncherApp(ctk.CTk):
         )
         self.status_label.pack(pady=10)
         
-        # === 2. Controls Section ===
+        # === 2. 操作パネルセクション ===
         self.btn_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.btn_frame.grid(row=1, column=0, padx=20, pady=10)
         
-        # Start Button
+        # 開始ボタン
         self.start_btn = ctk.CTkButton(
             self.btn_frame, 
-            text="Start Web UI", 
+            text="Start Web UI (F1)", 
             command=self.start_server, 
             width=200, 
             height=40,
@@ -117,10 +83,10 @@ class LauncherApp(ctk.CTk):
         )
         self.start_btn.pack(pady=6)
         
-        # Open Browser Button
+        # ブラウザを開くボタン
         self.browser_btn = ctk.CTkButton(
             self.btn_frame, 
-            text="Open Browser", 
+            text="Open Browser (F2)", 
             command=self.open_browser, 
             state="disabled",
             width=200, 
@@ -132,10 +98,10 @@ class LauncherApp(ctk.CTk):
         )
         self.browser_btn.pack(pady=6)
         
-        # Stop Button
+        # 停止ボタン
         self.stop_btn = ctk.CTkButton(
             self.btn_frame, 
-            text="Stop Server", 
+            text="Stop Server (F3)", 
             command=self.stop_server, 
             state="disabled",
             width=200, 
@@ -145,7 +111,7 @@ class LauncherApp(ctk.CTk):
         )
         self.stop_btn.pack(pady=6)
         
-        # === 3. Log Section ===
+        # === 3. ログセクション ===
         self.log_text = ctk.CTkLabel(
             self, 
             text="Waiting for user action...", 
@@ -154,8 +120,14 @@ class LauncherApp(ctk.CTk):
         )
         self.log_text.grid(row=2, column=0, pady=(0, 20))
         
-        # Cleanup logic
+        # 終了処理
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+        # ショートカットキー
+        self.bind("<F1>", self.start_server)
+        self.bind("<F2>", self.open_browser)
+        self.bind("<F3>", self.stop_server)
+        self.bind("<Escape>", self.on_closing)
 
     def setup_icon(self):
         try:
@@ -173,15 +145,46 @@ class LauncherApp(ctk.CTk):
         except Exception as e:
             print(f"Failed to load icon: {e}")
 
-    def center_window(self):
+    def setup_window_position(self):
         self.update_idletasks()
+        
+        # デバッグ: スクリーン情報
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        print(f"DEBUG: Screen Size: {screen_w}x{screen_h}")
+        
         width = 400
         height = 350
-        x = (self.winfo_screenwidth() // 2) - (width // 2)
-        y = (self.winfo_screenheight() // 2) - (height // 2)
-        self.geometry(f'{width}x{height}+{int(x)}+{int(y)}')
+        
+        # 戦略: 第1モニタ（左画面）の右上に配置
+        # 仮説: WSLgの原点(0,0)は「右モニタの左上」にある。
+        # したがって左モニタは負の座標領域 (例: -1920 ～ 0) にある。
+        # 左モニタの右端(0付近)に配置するには、マイナス座標を指定する。
+        
+        x = 0 # デフォルト
+        y = 50
+        margin_x = 50
+        
+        if screen_w > 2500:
+            # デュアルモニタ判定
+            print("DEBUG: Dual Monitor Detected (Current Origin might be on Right Screen)")
+            # 左モニタの右上 = 原点(0) - ウィンドウ幅 - マージン
+            x = 0 - width - margin_x 
+        else:
+            # シングルモニタ(あるいは通常の並び)の場合、右端
+            x = screen_w - width - margin_x
+            
+        geo = f'{width}x{height}+{int(x)}+{int(y)}'
+        print(f"DEBUG: Setting Geometry: {geo}")
+        self.geometry(geo)
+        
+        # WSLgのリセット動作を防ぐための強制更新
+        def force_geo():
+             self.geometry(geo)
+             
+        self.after(500, force_geo)
 
-    def start_server(self):
+    def start_server(self, event=None):
         if self.process:
             return
             
@@ -232,7 +235,9 @@ class LauncherApp(ctk.CTk):
         self.log_text.configure(text=f"Server Ready at {url}")
         self.browser_btn.configure(state="normal")
 
-    def open_browser(self):
+    def open_browser(self, event=None):
+        if self.browser_btn.cget("state") == "disabled":
+            return
         try:
             with open("/proc/version", "r") as f:
                 version_info = f.read().lower()
@@ -248,7 +253,7 @@ class LauncherApp(ctk.CTk):
                 print(f"Failed to launch via cmd.exe: {e}")
         webbrowser.open(self.server_url)
 
-    def stop_server(self):
+    def stop_server(self, event=None):
         if self.process:
             self.update_status("Stopping...", "orange")
             self.log_text.configure(text="Terminating process...")
@@ -278,7 +283,7 @@ class LauncherApp(ctk.CTk):
         except Exception:
             pass
 
-    def on_closing(self):
+    def on_closing(self, event=None):
         self.stop_server()
         self.destroy()
         sys.exit(0)

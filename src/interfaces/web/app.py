@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import logging
 import time
 import pandas as pd
@@ -6,6 +7,20 @@ from datetime import datetime, date, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from src.core.usecase import run_process
 from src.core.bitwarden import BitwardenClient
+
+# -----------------------------------------------------------------------------
+# Constants & UI Labels (Single Source of Truth)
+# -----------------------------------------------------------------------------
+LBL_MP = "Master Password (Alt+Shift+M)"
+LBL_RUN = "今すぐ実行 (Shift+Enter)"
+LBL_SCHEDULE = "予約に追加 (Shift+S)"
+LBL_TYPE_IN = "出勤 (IN) (Alt+1)"
+LBL_TYPE_OUT = "退勤 (OUT) (Alt+2)"
+LBL_MODE_TEST = "テスト (Dry Run) (Alt+3)"
+LBL_MODE_LIVE = "本番 (Live) (Alt+4)"
+LBL_DATE = "Date (Alt+Shift+D)"
+LBL_TIME = "Time (Alt+Shift+T)"
+LBL_DETAIL = "細かく設定する (Alt+5)"
 
 # -----------------------------------------------------------------------------
 # Configuration & Setup
@@ -107,6 +122,240 @@ st.markdown("""
 
 st.title("⏰ Touch On Time Automator")
 
+# === Shortcuts & Attribute Injection ===
+def add_keyboard_shortcuts():
+    # Pass Python constants to JS
+    # 分離: 表示用ラベル(LABELS) と 検索用キーワード(KEYS)
+    # これにより、UI上の装飾文字(Alt+...)が検索の邪魔をするのを防ぐ
+    js_variables = f"""
+    const LABELS = {{
+        RUN: '{LBL_RUN}',
+        SCHEDULE: '{LBL_SCHEDULE}',
+        TYPE_IN: '{LBL_TYPE_IN}',
+        TYPE_OUT: '{LBL_TYPE_OUT}',
+        MODE_TEST: '{LBL_MODE_TEST}',
+        MODE_LIVE: '{LBL_MODE_LIVE}',
+        DATE: '{LBL_DATE}',
+        TIME: '{LBL_TIME}',
+        MP: '{LBL_MP}',
+        DETAIL: '{LBL_DETAIL}'
+    }};
+    
+    // 検索語句はシンプルに (部分一致でヒットしやすくする)
+    const SEARCH_KEYS = {{
+        RUN: '今すぐ実行',
+        SCHEDULE: '予約に追加',
+        TYPE_IN: '出勤 (IN)',
+        TYPE_OUT: '退勤 (OUT)',
+        MODE_TEST: 'テスト',
+        MODE_LIVE: '本番',
+        DATE: 'Date', 
+        TIME: 'Time',
+        MP: 'Master Password',
+        DETAIL: '細かく設定する'
+    }};
+    """
+
+    js_code = f"""
+    <script>
+    {js_variables}
+    
+    const doc = window.parent.document;
+    
+    // --- 1. Attribute Injection Helper ---
+    function assignTestIds() {{
+        // Buttons
+        assignIdByText(SEARCH_KEYS.RUN, 'btn-run-now');
+        assignIdByText(SEARCH_KEYS.SCHEDULE, 'btn-add-schedule');
+        
+        // Radio Labels
+        assignIdByText(SEARCH_KEYS.TYPE_IN, 'radio-in', 'label');
+        assignIdByText(SEARCH_KEYS.TYPE_OUT, 'radio-out', 'label');
+        assignIdByText(SEARCH_KEYS.MODE_TEST, 'radio-dry', 'label');
+        assignIdByText(SEARCH_KEYS.MODE_LIVE, 'radio-live', 'label');
+        assignIdByText(SEARCH_KEYS.DETAIL, 'chk-detail', 'label');
+
+        // Inputs
+        assignInputIdByLabel(SEARCH_KEYS.DATE, 'input-date');
+        assignInputIdByLabel(SEARCH_KEYS.TIME, 'input-time');
+        assignInputIdByLabel(SEARCH_KEYS.MP, 'input-mp', true); 
+    }}
+
+    function assignIdByText(text, testId, tagName='*') {{
+        const lowerText = text.toLowerCase();
+        const translate = "translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')";
+        const xpath = `//${{tagName}}[contains(${{translate}}, '${{lowerText}}')]`;
+        
+        const result = doc.evaluate(xpath, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        for (let i = 0; i < result.snapshotLength; i++) {{
+            let el = result.snapshotItem(i);
+            
+            // Heuristic: Skip if text is too long (likely a container, not the button/label itself)
+            if (el.innerText && el.innerText.length > text.length + 50) continue;
+
+            if (testId.startsWith('btn') || testId.startsWith('radio') || testId.startsWith('chk')) {{
+                 let current = el;
+                 let found = false;
+                 // Traverse up to find the clickable element
+                 while(current && current !== doc.body) {{
+                    if (current.tagName === 'BUTTON' || current.tagName === 'LABEL' || current.getAttribute('role') === 'button') {{
+                        // Avoid overwriting if possible, but ensure priority
+                        if (!current.hasAttribute('data-testid') || current.getAttribute('data-testid') !== testId) {{
+                            current.setAttribute('data-testid', testId);
+                        }}
+                        found = true;
+                        break;
+                    }}
+                    current = current.parentElement;
+                 }}
+                 if (!found && tagName !== '*') {{
+                     el.setAttribute('data-testid', testId);
+                 }}
+            }} else {{
+                el.setAttribute('data-testid', testId);
+            }}
+        }}
+    }}
+
+    function assignInputIdByLabel(labelText, testId, isPassword=false) {{
+        // 1. Password Special Case
+        if (isPassword) {{
+           const inputs = Array.from(doc.getElementsByTagName('input'));
+           const pw = inputs.find(i => i.type === 'password');
+           if (pw) {{ pw.setAttribute('data-testid', testId); return; }}
+        }}
+
+        const lowerLabel = labelText.toLowerCase();
+
+        // 2. Try find by aria-label (Case Insensitive)
+        const inputs = Array.from(doc.getElementsByTagName('input'));
+        const ariaTarget = inputs.find(i => {{
+            const al = i.getAttribute('aria-label');
+            return al && al.toLowerCase().includes(lowerLabel);
+        }});
+        if (ariaTarget) {{
+            ariaTarget.setAttribute('data-testid', testId);
+            console.log(`Success: Found ${{labelText}} via aria-label`);
+            return; 
+        }}
+
+        // 3. Robust Search: Label with 'for' attribute
+        const translate = "translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')";
+        const xpathLabel = `//label[contains(${{translate}}, '${{lowerLabel}}')]`;
+        const labelResult = doc.evaluate(xpathLabel, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        
+        for (let i = 0; i < labelResult.snapshotLength; i++) {{
+             const label = labelResult.snapshotItem(i);
+             // Skip if label text is huge
+             if (label.innerText && label.innerText.length > labelText.length + 50) continue;
+
+             const forId = label.getAttribute('for');
+             if (forId) {{
+                 const targetInput = doc.getElementById(forId);
+                 if (targetInput) {{
+                     targetInput.setAttribute('data-testid', testId);
+                     console.log(`Success: Found ${{labelText}} via 'for' attribute`);
+                     return; 
+                 }}
+             }}
+        }}
+
+        // 4. Fallback: Proximity Search
+        // Look for any element containing the text
+        const xpathGeneric = `//*[self::p or self::div or self::span or self::label][contains(${{translate}}, '${{lowerLabel}}')]`;
+        const result = doc.evaluate(xpathGeneric, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        
+        for (let i = 0; i < result.snapshotLength; i++) {{
+             let labelEl = result.snapshotItem(i);
+             if (labelEl.innerText && labelEl.innerText.length > labelText.length + 50) continue;
+             
+             let parent = labelEl.parentElement;
+             let levels = 0;
+             while(parent && levels < 5) {{
+                 // Try to find input, select, or textarea
+                 const input = parent.querySelector('input');
+                 if (input) {{ 
+                     // Only assign if not already assigned different ID
+                     if (!input.hasAttribute('data-testid') || input.getAttribute('data-testid') === testId) {{
+                        input.setAttribute('data-testid', testId); 
+                        console.log(`Success: Found ${{labelText}} via proximity`);
+                        return; 
+                     }}
+                 }}
+                 parent = parent.parentElement;
+                 if (parent === doc.body) break;
+                 levels++;
+            }}
+        }}
+        console.warn(`FAIL: Could not find input for label: ${{labelText}}`);
+    }}
+    
+    // --- 2. Event Handler using IDs ---
+    if (window.parent._clockInKeyHandler) {{
+        doc.removeEventListener('keydown', window.parent._clockInKeyHandler);
+    }}
+
+    window.parent._clockInKeyHandler = function(e) {{
+        assignTestIds(); // Re-check IDs
+
+        const activeTag = doc.activeElement ? doc.activeElement.tagName.toLowerCase() : "";
+        const activeType = doc.activeElement ? doc.activeElement.type : "";
+        const isTypingSensitive = (activeType === 'password' || activeTag === 'textarea');
+
+        if (e.altKey && e.shiftKey) {{
+             console.log(`Key Detected: Alt+Shift+${{e.key}}`); // DEBUG Log
+        }}
+
+        // Actions
+        if (e.shiftKey && e.key === 'Enter') {{
+            clickById('btn-run-now'); e.preventDefault();
+        }}
+        if (e.shiftKey && (e.key === 's' || e.key === 'S')) {{
+            if (!isTypingSensitive) {{ clickById('btn-add-schedule'); e.preventDefault(); }}
+        }}
+
+        // Toggles & Focus
+        if (e.altKey) {{
+            if (!e.shiftKey) {{
+                    if (e.key === '1') clickById('radio-in');
+                    if (e.key === '2') clickById('radio-out');
+                    if (e.key === '3') clickById('radio-dry');
+                    if (e.key === '4') clickById('radio-live');
+                    if (e.key === '5') clickById('chk-detail');
+            }}
+            if (e.shiftKey) {{
+                if (e.key === 'D' || e.key === 'd') {{ focusById('input-date'); e.preventDefault(); }}
+                if (e.key === 'T' || e.key === 't') {{ focusById('input-time'); e.preventDefault(); }}
+                if (e.key === 'M' || e.key === 'm') {{ focusById('input-mp'); e.preventDefault(); }}
+            }}
+        }}
+    }};
+
+    doc.addEventListener('keydown', window.parent._clockInKeyHandler);
+    
+    // Initial run to set IDs
+    assignTestIds();
+    // Observer to handle DOM changes (Streamlit Re-renders)
+    const observer = new MutationObserver(() => {{
+        assignTestIds();
+    }});
+    observer.observe(doc.body, {{ childList: true, subtree: true }});
+
+
+    // Helpers
+    function clickById(id) {{
+        const el = doc.querySelector(`[data-testid="${{id}}"]`);
+        if (el) el.click();
+    }}
+    function focusById(id) {{
+        const el = doc.querySelector(`[data-testid="${{id}}"]`);
+        if (el) el.focus();
+    }}
+
+    </script>
+    """
+    components.html(js_code, height=0, width=0)
+
 # === Credential Management (Main Area) ===
 # Sync Global -> Local (Initialize State)
 if 'master_password' not in st.session_state:
@@ -137,7 +386,8 @@ def authenticate():
 
 # 認証されていない場合のみ入力フォームを表示
 if not (st.session_state.get('master_password') and global_session.master_password):
-    st.info("👇 Master Passwordを入力して、接続を開始してください。")
+    add_keyboard_shortcuts()
+    st.info(f"👇 Master Passwordを入力して、接続を開始してください。 (Alt+Shift+M)")
     
     # CSS for vertical alignment of button to match text input height
     st.markdown("""
@@ -154,7 +404,7 @@ if not (st.session_state.get('master_password') and global_session.master_passwo
         # パスワード入力欄
         # on_change=authenticate triggers the logic when Enter is pressed
         mp_input_val = st.text_input(
-            "Master Password", 
+            LBL_MP, 
             type="password",
             key="master_password", 
             label_visibility="collapsed",
@@ -176,6 +426,7 @@ def logout_callback():
 # SessionStateにあるパスワードが有効（かつGlobalとも整合している）場合に表示
 if st.session_state.get('master_password') and global_session.master_password:
     # ログイン済みヘッダー
+    add_keyboard_shortcuts()
     # st.successの高さに合わせるため、少しCSSで調整するか、あるいはシンプルに並べる
     # Vertical alignment for logout button
     st.markdown("""
@@ -299,14 +550,14 @@ if st.session_state.get('master_password') and global_session.master_password:
         
         col1, col2 = st.columns(2)
         with col1:
-            clock_type = st.radio("Type", ["出勤 (IN)", "退勤 (OUT)"])
+            clock_type = st.radio("Type", [LBL_TYPE_IN, LBL_TYPE_OUT])
             type_code = "in" if "IN" in clock_type else "out"
         with col2:
-            mode = st.radio("Mode", ["テスト (Dry Run)", "本番 (Live)"])
+            mode = st.radio("Mode", [LBL_MODE_TEST, LBL_MODE_LIVE])
             is_dry = "Dry" in mode
             
             # Headless Toggle
-            is_headless = st.checkbox("Headless Mode (ブラウザ非表示)", value=False)
+            is_headless = st.checkbox("Headless Mode (ブラウザ非表示)", value=True)
 
         st.subheader("Schedule")
         # Date/Time Logic (Stable Defaults)
@@ -314,7 +565,7 @@ if st.session_state.get('master_password') and global_session.master_password:
         dc1, dc2 = st.columns(2)
         
         with dc1:
-            d_val = st.date_input("Date", date.today())
+            d_val = st.date_input(LBL_DATE, date.today())
         
         with dc2:
             # Logic for time step based on checkbox state (handled via session_state to allow placement below)
@@ -330,11 +581,11 @@ if st.session_state.get('master_password') and global_session.master_password:
                 def_t = datetime.strptime("18:05", "%H:%M").time()
 
             # Time Input (aligned with Date Input now)
-            t_val = st.time_input("Time", value=def_t, step=step_val)
+            t_val = st.time_input(LBL_TIME, value=def_t, step=step_val)
             
             # Checkbox placed BELOW Time input
             # Changing this will trigger rerun, updating 'step' in next pass
-            st.checkbox("細かく設定する (1分刻み)", key=use_minute_step_key)
+            st.checkbox(LBL_DETAIL, key=use_minute_step_key)
 
         run_dt = datetime.combine(d_val, t_val)
 
@@ -345,7 +596,7 @@ if st.session_state.get('master_password') and global_session.master_password:
         mp = st.session_state['master_password']
 
         with ac1:
-            if st.button("今すぐ実行", type="primary"):
+            if st.button(LBL_RUN, type="primary"):
                 with st.status("実行プロセス起動...", expanded=True) as status:
                     st.write("認証 & 同期中...")
                     # Streamlitスレッド内で実行（UIにログが出せる利点）
@@ -363,7 +614,7 @@ if st.session_state.get('master_password') and global_session.master_password:
                         st.error(f"{e}")
 
         with ac2:
-            if st.button("予約に追加"):
+            if st.button(LBL_SCHEDULE):
                 if run_dt <= datetime.now():
                     st.error("未来の日時を指定してください")
                 else:
