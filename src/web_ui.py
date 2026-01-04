@@ -107,61 +107,92 @@ st.markdown("""
 
 st.title("⏰ Touch On Time Automator")
 
-# === Sidebar: Credential Management ===
-st.sidebar.header("🔑 認証設定")
-
-# Sync Global -> Local
-if global_session.master_password and 'master_password' not in st.session_state:
-    st.session_state['master_password'] = global_session.master_password
-
+# === Credential Management (Main Area) ===
+# Sync Global -> Local (Initialize State)
 if 'master_password' not in st.session_state:
-    st.session_state['master_password'] = ""  # Initialize as empty string for widget compat
+    st.session_state['master_password'] = global_session.master_password if global_session.master_password else ""
 
-# パスワード入力欄をフォーム化（Enterキーで送信できるようにする）
-with st.sidebar.form(key="auth_form"):
-    # Use key binding for persistent state without manual value handling
-    mp_input = st.text_input(
-        "Master Password", 
-        type="password",
-        key="master_password_input", # Unique key for the widget
-        value=st.session_state['master_password'],
-        help="入力してEnter、またはボタン押下で接続確認を行います"
-    )
-    
-    # 接続確認ボタン
-    submit_btn = st.form_submit_button("設定保存 & 接続確認")
-
-if submit_btn:
+# Logic for Authentication (Reusable for button and Enter key)
+def authenticate():
+    mp_input = st.session_state['master_password']
     if not mp_input:
-        st.sidebar.error("パスワードを入力してください")
-    else:
-        with st.sidebar.status("認証中...") as s:
-            try:
-                bw = BitwardenClient()
-                # ロック解除トライ
-                key = bw.unlock(mp_input)
-                if key:
-                    # 成功したら保存 (Local & Global)
-                    st.session_state['master_password'] = mp_input
-                    global_session.master_password = mp_input
-                    # 最新化
-                    s.update(label="同期中...", state="running")
-                    bw.sync()
-                    s.update(label="認証成功！準備完了", state="complete")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.sidebar.error("ロック解除に失敗しました")
-            except Exception as e:
-                st.sidebar.error(f"エラー: {e}")
+        st.error("パスワードを入力してください")
+        return
+    
+    with st.status("認証中...") as s:
+        try:
+            bw = BitwardenClient()
+            key = bw.unlock(mp_input)
+            if key:
+                global_session.master_password = mp_input
+                s.update(label="同期中...", state="running")
+                bw.sync()
+                s.update(label="認証成功！準備完了", state="complete")
+                time.sleep(1)
+                # No manual rerun needed if called from callback, but state update triggers rerun
+            else:
+                st.error("ロック解除に失敗しました")
+        except Exception as e:
+            st.error(f"エラー: {e}")
+
+# 認証されていない場合のみ入力フォームを表示
+if not (st.session_state.get('master_password') and global_session.master_password):
+    st.info("👇 Master Passwordを入力して、接続を開始してください。")
+    
+    # CSS for vertical alignment of button to match text input height
+    st.markdown("""
+    <style>
+    div.stButton > button:first-child {
+        height: 2.6rem;
+        margin-top: 0px; 
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        # パスワード入力欄
+        # on_change=authenticate triggers the logic when Enter is pressed
+        mp_input_val = st.text_input(
+            "Master Password", 
+            type="password",
+            key="master_password", 
+            label_visibility="collapsed",
+            placeholder="Master Passwordを入力...",
+            on_change=authenticate
+        )
+    with col2:
+        # 接続確認ボタン
+        # type="secondary" (default) is neutral color. 
+        # on_click=authenticate triggers same logic.
+        st.button("接続確認", use_container_width=True, on_click=authenticate)
+
+# Callback function for logout
+def logout_callback():
+    st.session_state['master_password'] = ""
+    global_session.master_password = None
 
 # ステータス表示 & メインコンテンツ制御
-if st.session_state['master_password']:
-    st.sidebar.success("✅ 認証情報: セット済み")
-    if st.sidebar.button("クリア (ログアウト)"):
-        st.session_state['master_password'] = ""
-        global_session.master_password = None
-        st.rerun()
+# SessionStateにあるパスワードが有効（かつGlobalとも整合している）場合に表示
+if st.session_state.get('master_password') and global_session.master_password:
+    # ログイン済みヘッダー
+    # st.successの高さに合わせるため、少しCSSで調整するか、あるいはシンプルに並べる
+    # Vertical alignment for logout button
+    st.markdown("""
+    <style>
+    /* Align logout button with the success message */
+    div[data-testid="stHorizontalBlock"] > div:nth-child(2) button {
+        height: 3rem; /* Match st.success default height approx */
+        margin-top: 2px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    h_col1, h_col2 = st.columns([3, 1])
+    with h_col1:
+        st.success("✅ 認証済み")
+    with h_col2:
+        st.button("ログアウト", on_click=logout_callback, type="secondary", use_container_width=True)
     
     # === Main: Execution Console (Authenticated) ===
     tab1, tab2, tab3, tab4 = st.tabs(["🚀 実行・予約", "📋 予約リスト", "📊 ログ概要", "📝 ログ詳細"])
@@ -173,13 +204,30 @@ if st.session_state['master_password']:
             with open(log_file_path, "r") as f:
                 lines = f.readlines()
             
-            # 簡易パース: "Job Completed" や "Job Failed" を抽出
+            # Aggregate logs: Job Started -> Job Completed/Failed
+            # Use a dictionary to track running jobs by thread/context if possible, 
+            # but here we'll assume linear execution or close proximity matching.
+            # Simplified Logic: Iterate and combine "Started" with next "Completed/Failed"
+            
             history_data = []
+            current_job = {}
+            
             for line in lines:
+                ts_str = line.split("[")[0].strip()
+                # Parse timestamp for sorting
+                # 2026-01-04 12:00:00,123
+                try:
+                    ts = datetime.strptime(ts_str.split(',')[0], "%Y-%m-%d %H:%M:%S")
+                except:
+                    continue
+
                 if "Job Started" in line:
-                    # 2026-01-04 09:17:39,401 [INFO] Job Started: in (Dry=True)
+                    # New Entry
+                    # If previous job incomplete, push it as running/unknown
+                    if current_job:
+                        history_data.append(current_job)
+                    
                     parts = line.split("Job Started:")
-                    ts = line.split("[")[0].strip()
                     desc = parts[1].strip()
                     
                     # Mode判定
@@ -189,25 +237,40 @@ if st.session_state['master_password']:
                         mode_str = "🔴 Live"
                     else:
                         mode_str = "-"
-
-                    history_data.append({
-                        "Time": ts, 
+                    
+                    clean_desc = desc.replace(" (Dry=True)", "").replace(" (Dry=False)", "")
+                    
+                    current_job = {
+                        "Date": ts.strftime('%Y-%m-%d'),
+                        "Start Time": ts.strftime('%H:%M:%S'),
+                        "End Time": "-",
                         "Mode": mode_str,
-                        "Event": "開始", 
-                        "Detail": desc.replace(" (Dry=True)", "").replace(" (Dry=False)", ""), # Detailからは削除してスッキリさせる
-                        "Status": "Started"
-                    })
+                        "Detail": clean_desc,
+                        "Status": "Running..." 
+                    }
+                
                 elif "Job Completed Successfully" in line:
-                    ts = line.split("[")[0].strip()
-                    history_data.append({"Time": ts, "Mode": "", "Event": "完了", "Detail": "-", "Status": "Success"})
+                    if current_job:
+                        current_job["End Time"] = ts.strftime('%H:%M:%S')
+                        current_job["Status"] = "✅ Success"
+                        history_data.append(current_job)
+                        current_job = {} # Reset
+                
                 elif "Job Failed" in line:
-                    ts = line.split("[")[0].strip()
-                    parts = line.split("Job Failed:")
-                    err = parts[1].strip() if len(parts) > 1 else "Unknown Error"
-                    history_data.append({"Time": ts, "Mode": "", "Event": "失敗", "Detail": err, "Status": "Error"})
-            
+                    if current_job:
+                        parts = line.split("Job Failed:")
+                        err = parts[1].strip() if len(parts) > 1 else "Error"
+                        current_job["End Time"] = ts.strftime('%H:%M:%S')
+                        current_job["Status"] = f"❌ Error: {err}"
+                        history_data.append(current_job)
+                        current_job = {} # Reset
+
+            # Append last job if still running
+            if current_job:
+                 history_data.append(current_job)
+
             if history_data:
-                # 最新順に並び替え
+                # Show newest first
                 df = pd.DataFrame(history_data[::-1])
                 st.dataframe(df, use_container_width=True)
                 if st.button("ログ削除 (リセット)", key="clear_logs"):
@@ -247,20 +310,31 @@ if st.session_state['master_password']:
 
         st.subheader("Schedule")
         # Date/Time Logic (Stable Defaults)
+        # Layout adjustment: Equal columns for Date and Time
         dc1, dc2 = st.columns(2)
+        
         with dc1:
             d_val = st.date_input("Date", date.today())
+        
         with dc2:
-            # Default Logic
+            # Logic for time step based on checkbox state (handled via session_state to allow placement below)
+            use_minute_step_key = "use_minute_step"
+            # Default to False if not set
+            current_step_mode = st.session_state.get(use_minute_step_key, False)
+            step_val = 60 if current_step_mode else 300
+
+            # Define default time based on type
             if type_code == "in":
                 def_t = datetime.strptime("08:55", "%H:%M").time()
             else:
                 def_t = datetime.strptime("18:05", "%H:%M").time()
-                
-            use_minute_step = st.checkbox("細かく設定する (1分刻み)", value=False)
-            step_val = 60 if use_minute_step else 300
-            
+
+            # Time Input (aligned with Date Input now)
             t_val = st.time_input("Time", value=def_t, step=step_val)
+            
+            # Checkbox placed BELOW Time input
+            # Changing this will trigger rerun, updating 'step' in next pass
+            st.checkbox("細かく設定する (1分刻み)", key=use_minute_step_key)
 
         run_dt = datetime.combine(d_val, t_val)
 
@@ -323,8 +397,6 @@ if st.session_state['master_password']:
 
 else:
     # --- Not Authenticated State ---
-    st.sidebar.warning("⚠️ パスワード未設定")
-    st.sidebar.info("まずはパスワードを入力して確認を行ってください。")
-    # Show a friendly welcome message on main screen instead of blank/tab artifacts
-    st.info("👈 左側のサイドバーからMaster Passwordを入力して、接続を開始してください。")
+    # Already handled by top block
+    pass
     # st.stop() is removed to prevent layout shift artifacts
