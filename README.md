@@ -84,17 +84,48 @@ python3 main.py out --live
 - 出勤: 08:45 - 09:00 以外
 - 退勤: 18:00 - 20:00 以外
 
-## Web UI (管理画面)
+## 💻 Screen Operation (Web UI)
 
-ブラウザで操作できる管理画面も利用可能です。
+本アプリケーションは [Streamlit](https://streamlit.io/) を使用したWeb UIを提供しています。
 
+### 起動方法
+
+**Makefileを使用する場合（推奨）:**
 ```bash
-# Web UI起動
-./venv/bin/streamlit run app.py --server.headless true
+make web
 ```
 
-起動後、表示されるURL（例: `http://localhost:8501`）にブラウザでアクセスしてください。
-Bitwardenのロック解除や、打刻の予約実行が可能です。
+**手動で起動する場合:**
+```bash
+export PYTHONPATH=.
+streamlit run src/web_ui.py
+# Headlessモード(ブラウザなし)で起動する場合
+streamlit run src/web_ui.py --server.headless true
+```
+
+起動後、ブラウザで [http://localhost:8501](http://localhost:8501) にアクセスしてください。
+（初回は Bitwarden のマスターパスワードを入力して認証を行ってください）
+
+---
+
+## 💻 CLI Operation
+
+コマンドラインから直接実行することも可能です。
+
+### 基本コマンド
+
+**Makefileを使用する場合:**
+```bash
+# ヘルプ表示
+make cli
+
+# 例: 出勤 (Dry Run)
+PYTHONPATH=. python src/cli.py in
+
+# 例: 退勤 (本番実行)
+PYTHONPATH=. python src/cli.py out --live
+```
+- `bw` コマンドがエラーになる場合は、`export BW_SESSION=...` が正しく設定されているか確認してください。
 
 ## エラー時の対応
 - `src/automator.py` はエラー時にスクリーンショット (`error_*.png`) を保存します。

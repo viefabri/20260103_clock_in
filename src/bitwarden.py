@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 class BitwardenClient:
     """Bitwarden CLI (bw) を操作するクラス"""
 
-    # ネイティブバイナリのパス (プロジェクトルートにある bw_native を使用)
-    BW_PATH = os.path.join(os.getcwd(), "bw_native")
+    # Native Binary Path (Project Root relative)
+    BW_PATH = "bin/bw_native"
 
     def __init__(self, session_key: Optional[str] = None):
         self.session_key = session_key
@@ -129,3 +129,26 @@ class BitwardenClient:
         except Exception as e:
             logger.error(f"予期せぬエラーが発生しました: {e}")
             raise
+
+    def sync(self) -> None:
+        """
+        Bitwardenの保管庫を最新化(sync)します。
+        Unlock済みの session_key が必要です。
+        """
+        logger.info("Bitwarden保管庫を同期しています...")
+        try:
+            env = os.environ.copy()
+            if self.session_key:
+                env["BW_SESSION"] = self.session_key
+            
+            subprocess.run(
+                [self.BW_PATH, "sync"],
+                env=env,
+                check=True,
+                capture_output=True
+            )
+            logger.info("同期に成功しました。")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Sync failed: {e}")
+            # 同期失敗は致命的ではない場合もあるが、警告を出す
+            logger.warning("保管庫の同期に失敗しましたが、処理を継続します。")

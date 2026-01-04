@@ -6,6 +6,9 @@ __pycache__/
 env/
 venv/
 *.log
-drivers/
-bw_native
-*.png
+
+# Project specific
+bin/
+output/
+logs/
+src/__pycache__/

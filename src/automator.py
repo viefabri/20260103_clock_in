@@ -104,14 +104,14 @@ class TouchOnTimeAutomator:
 
         except TimeoutException:
             logger.error("ログイン画面の要素が見つかりませんでした (Timeout)")
-            self.driver.save_screenshot("error_login_timeout.png")
-            with open("error_login_source.html", "w", encoding="utf-8") as f:
+            self.driver.save_screenshot("output/error_login_timeout.png")
+            with open("output/error_login_source.html", "w", encoding="utf-8") as f:
                 f.write(self.driver.page_source)
             raise
         except Exception as e:
             logger.error(f"ログイン処理中にエラーが発生しました: {e}")
-            self.driver.save_screenshot("error_login_generic.png")
-            with open("error_login_source.html", "w", encoding="utf-8") as f:
+            self.driver.save_screenshot("output/error_login_generic.png")
+            with open("output/error_login_source.html", "w", encoding="utf-8") as f:
                 f.write(self.driver.page_source)
             raise
 
@@ -167,9 +167,9 @@ class TouchOnTimeAutomator:
 
         except TimeoutException:
             logger.error(f"{button_label}ボタンが見つかりませんでした (Timeout)")
-            self.driver.save_screenshot(f"error_{button_type}_not_found.png")
+            self.driver.save_screenshot(f"output/error_{button_type}_not_found.png")
             raise
         except Exception as e:
             logger.error(f"{button_label}打刻処理中にエラーが発生しました: {e}")
-            self.driver.save_screenshot(f"error_{button_type}_generic.png")
+            self.driver.save_screenshot(f"output/error_{button_type}_generic.png")
             raise
