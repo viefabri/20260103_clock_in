@@ -8,13 +8,13 @@ help: ## Show this help
 
 web: ## Start Streamlit Web UI (Headless by default for server)
 	@echo "Starting Web UI..."
-	PYTHONPATH=. $(STREAMLIT) run src/web_ui.py --server.headless true
+	PYTHONPATH=. $(STREAMLIT) run src/interfaces/web/app.py --server.headless true
 
 cli: ## Run CLI help
-	PYTHONPATH=. $(PYTHON) src/cli.py --help
+	PYTHONPATH=. $(PYTHON) src/interfaces/cli/entrypoint.py --help
 
 app: ## Start GUI Launcher App
-	PYTHONPATH=. $(PYTHON) src/launcher.py
+	PYTHONPATH=. $(PYTHON) src/interfaces/gui/launcher.py
 
 clean: ## Clean up logs and cache
 	rm -rf __pycache__ src/__pycache__ logs/*.log output/*.png output/*.html

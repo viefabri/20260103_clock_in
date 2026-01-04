@@ -159,7 +159,11 @@ class LauncherApp(ctk.CTk):
 
     def setup_icon(self):
         try:
-            icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "assets", "icon.png")
+            # Current: src/interfaces/gui/launcher.py
+            # Target: src/assets/icon.png
+            # Needs to go up to 'src' dir.
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            icon_path = os.path.join(base_dir, "assets", "icon.png")
             if os.path.exists(icon_path):
                 img = Image.open(icon_path)
                 photo_icon = ImageTk.PhotoImage(img)
@@ -188,7 +192,7 @@ class LauncherApp(ctk.CTk):
         
         env = os.environ.copy()
         env["PYTHONPATH"] = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        cmd = [sys.executable, "-m", "streamlit", "run", "src/web_ui.py", "--server.headless", "true"]
+        cmd = [sys.executable, "-m", "streamlit", "run", "src/interfaces/web/app.py", "--server.headless", "true"]
         
         try:
             self.process = subprocess.Popen(

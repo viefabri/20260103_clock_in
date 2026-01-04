@@ -4,8 +4,8 @@ import time
 import pandas as pd
 from datetime import datetime, date, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
-from src.bitwarden import BitwardenClient
-from src.core import run_process
+from src.core.usecase import run_process
+from src.core.bitwarden import BitwardenClient
 
 # -----------------------------------------------------------------------------
 # Configuration & Setup

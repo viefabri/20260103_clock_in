@@ -3,10 +3,10 @@ Core business logic for Touch On Time Automator
 """
 import sys
 import logging
-from src import config
-from src import validator
-from src.bitwarden import BitwardenClient
-from src.automator import TouchOnTimeAutomator
+from src.config import settings as config
+from src.core import validator
+from src.core.bitwarden import BitwardenClient
+from src.core.automator import TouchOnTimeAutomator
 
 logger = logging.getLogger("core")
 

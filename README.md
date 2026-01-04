@@ -101,35 +101,31 @@ make app
 make web
 ```
 
-**手動で起動する場合:**
-```bash
-export PYTHONPATH=.
-streamlit run src/web_ui.py
-# Headlessモード(ブラウザなし)で起動する場合
-streamlit run src/web_ui.py --server.headless true
+## プロジェクト構成
+
+```
+src/
+├── config/             # 設定ファイル (Settings)
+├── core/               # ビジネスロジック (Automator, Bitwarden)
+├── interfaces/         # ユーザーインターフェース (CLI, GUI, Web)
+│   ├── cli/            # コマンドラインツール
+│   ├── gui/            # Streamlitランチャー (Desktop App)
+│   └── web/            # Webブラウザ管理画面
+└── utils/              # ユーティリティ (Logger)
 ```
 
-起動後、ブラウザで [http://localhost:8501](http://localhost:8501) にアクセスしてください。
-（初回は Bitwarden のマスターパスワードを入力して認証を行ってください）
+## 使い方
 
----
-
-## 💻 CLI Operation
-
-コマンドラインから直接実行することも可能です。
-
-### 基本コマンド
-
-**Makefileを使用する場合:**
+### 1. ランチャー起動 (推奨)
 ```bash
-# ヘルプ表示
-make cli
+make app
+```
+GUIランチャーが起動し、サーバーの起動・停止、ブラウザ表示を管理できます。
 
-# 例: 出勤 (Dry Run)
-PYTHONPATH=. python src/cli.py in
-
-# 例: 退勤 (本番実行)
-PYTHONPATH=. python src/cli.py out --live
+### 2. CLI実行 (手動)
+```bash
+# 出勤 (本番)
+make cli -- type=in --live
 ```
 - `bw` コマンドがエラーになる場合は、`export BW_SESSION=...` が正しく設定されているか確認してください。
 

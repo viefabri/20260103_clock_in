@@ -4,18 +4,14 @@ CLI Entry Point for Touch On Time Automator
 import sys
 import logging
 import argparse
-from src import config
-from src.core import run_process
+from src.config import settings as config
+from src.core.usecase import run_process
+from src.utils.logger import setup_logger
 
 # -----------------------------------------------------------------------------
 # Logging Setup
 # -----------------------------------------------------------------------------
-logging.basicConfig(
-    level=config.LOG_LEVEL,
-    format=config.LOG_FORMAT,
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
-logger = logging.getLogger("cli")
+logger = setup_logger("", log_file="logs/cli.log")
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Touch On Time Auto Clock-In Tool")
