@@ -33,7 +33,6 @@ class LauncherApp(ctk.CTk):
         super().__init__()
         
         # ウィンドウ設定
-        # ウィンドウ設定
         self.title("Touch On Time Launcher")
         # self.geometry("400x350")  <- Removed to prevent double-rendering / jumping
         
