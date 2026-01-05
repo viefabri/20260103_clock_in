@@ -33,8 +33,9 @@ class LauncherApp(ctk.CTk):
         super().__init__()
         
         # ウィンドウ設定
+        # ウィンドウ設定
         self.title("Touch On Time Launcher")
-        self.geometry("400x350")
+        # self.geometry("400x350")  <- Removed to prevent double-rendering / jumping
         
         # 標準ウィンドウ (OS/WSLgによる管理)
         # 特別なハックは不要
@@ -146,43 +147,22 @@ class LauncherApp(ctk.CTk):
             print(f"Failed to load icon: {e}")
 
     def setup_window_position(self):
-        self.update_idletasks()
+        # self.update_idletasks() <- Removed to prevent redundant draw
         
-        # デバッグ: スクリーン情報
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        print(f"DEBUG: Screen Size: {screen_w}x{screen_h}")
-        
+        # ウィンドウサイズ
         width = 400
         height = 350
         
-        # 戦略: 第1モニタ（左画面）の右上に配置
-        # 仮説: WSLgの原点(0,0)は「右モニタの左上」にある。
-        # したがって左モニタは負の座標領域 (例: -1920 ～ 0) にある。
-        # 左モニタの右端(0付近)に配置するには、マイナス座標を指定する。
-        
-        x = 0 # デフォルト
-        y = 50
-        margin_x = 50
-        
-        if screen_w > 2500:
-            # デュアルモニタ判定
-            print("DEBUG: Dual Monitor Detected (Current Origin might be on Right Screen)")
-            # 左モニタの右上 = 原点(0) - ウィンドウ幅 - マージン
-            x = 0 - width - margin_x 
-        else:
-            # シングルモニタ(あるいは通常の並び)の場合、右端
-            x = screen_w - width - margin_x
+        # 画面左上に配置 (安全策)
+        # 以前の複雑なマルチモニタ判定ロジックは、環境変化(2画面→1画面)で
+        # ウィンドウが消失する原因となるため廃止。
+        # 単純に左上(100, 100)に表示し、あとはユーザーの移動に任せる。
+        x = 100
+        y = 100
             
-        geo = f'{width}x{height}+{int(x)}+{int(y)}'
+        geo = f'{width}x{height}+{x}+{y}'
         print(f"DEBUG: Setting Geometry: {geo}")
         self.geometry(geo)
-        
-        # WSLgのリセット動作を防ぐための強制更新
-        def force_geo():
-             self.geometry(geo)
-             
-        self.after(500, force_geo)
 
     def start_server(self, event=None):
         if self.process:
