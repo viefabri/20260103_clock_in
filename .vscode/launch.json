@@ -39,8 +39,10 @@
             "name": "Debug CLI: Clock In (Dry Run)",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "args": ["in"],
+            "program": "${workspaceFolder}/src/interfaces/cli/entrypoint.py",
+            "args": [
+                "in"
+            ],
             "console": "integratedTerminal",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
@@ -50,8 +52,11 @@
             "name": "Debug CLI: Clock In (LIVE)",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "args": ["in", "--live"],
+            "program": "${workspaceFolder}/src/interfaces/cli/entrypoint.py",
+            "args": [
+                "in",
+                "--live"
+            ],
             "console": "integratedTerminal",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
@@ -61,8 +66,10 @@
             "name": "Debug CLI: Clock Out (Dry Run)",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "args": ["out"],
+            "program": "${workspaceFolder}/src/interfaces/cli/entrypoint.py",
+            "args": [
+                "out"
+            ],
             "console": "integratedTerminal",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"

@@ -6,6 +6,7 @@ import logging
 from src.config import settings as config
 from src.core import validator
 from src.core.bitwarden import BitwardenClient
+from src.core.credentials import CredentialManager
 from src.core.automator import TouchOnTimeAutomator
 
 logger = logging.getLogger("core")
@@ -30,12 +31,18 @@ def run_process(clock_type: str, is_dry_run: bool, session_key: str = None, head
         logger.warning("!!! DRY_RUN モードが有効です。実際の打刻は行われません !!!")
 
     try:
+
         # 0. 時間チェック (警告のみ)
         validator.validate_time(clock_type)
 
-        # 1. Bitwardenから認証情報を取得
-        bw = BitwardenClient(session_key=session_key)
-        creds = bw.get_login_item(config.BITWARDEN_ITEM_NAME)
+        # 1. 認証情報の取得 (Local Cache or Bitwarden)
+        # SessionKeyがある場合(またはNoneでも)、必要に応じてBitwardenClientを作成するファクトリを渡す
+        cm = CredentialManager()
+        creds = cm.get_credentials(
+            config.BITWARDEN_ITEM_NAME,
+            bw_client_factory=lambda: BitwardenClient(session_key=session_key)
+        )
+        
         username = creds["username"]
         password = creds["password"]
         

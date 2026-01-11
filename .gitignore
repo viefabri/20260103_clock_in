@@ -13,3 +13,6 @@ output/
 logs/
 src/__pycache__/
 Obsidian_Export/
+
+# Secrets
+.secrets.json

@@ -7,6 +7,8 @@ from datetime import datetime, date, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from src.core.usecase import run_process
 from src.core.bitwarden import BitwardenClient
+from src.core.credentials import CredentialManager
+from src.config import settings as config
 
 # -----------------------------------------------------------------------------
 # Constants & UI Labels (Single Source of Truth)
@@ -72,18 +74,25 @@ def robust_job_runner(clock_type, is_dry_run, master_password, headless=False):
     logging.info(msg_start)
 
     try:
-        # 1. Unlock (Always fresh)
-        bw = BitwardenClient()
-        session_key = bw.unlock(master_password)
-        if not session_key:
-            raise RuntimeError("Unlock failed (Session key is empty)")
-        
-        # 2. Sync (最新化)
-        # 解除直後に実施して、最新のCredential確実に取れるようにする
-        bw.sync()
-        
-        # 3. Automation Run
-        run_process(clock_type, is_dry_run, session_key, headless=headless)
+        # Check Cache first
+        cm = CredentialManager()
+        if cm.is_cached(config.BITWARDEN_ITEM_NAME):
+            # Cache Hit: No master password needed
+            logging.info("Cache hit: Starting job without Bitwarden unlock.")
+            run_process(clock_type, is_dry_run, session_key=None, headless=headless)
+        else:
+            # Cache Miss: Unlock & Sync
+            # 1. Unlock (Always fresh)
+            bw = BitwardenClient()
+            session_key = bw.unlock(master_password)
+            if not session_key:
+                raise RuntimeError("Unlock failed (Session key is empty)")
+            
+            # 2. Sync (最新化)
+            bw.sync()
+            
+            # 3. Automation Run
+            run_process(clock_type, is_dry_run, session_key, headless=headless)
         
         msg_end = "Job Completed Successfully."
         print(f"{log_prefix} {msg_end}")
@@ -384,8 +393,20 @@ def authenticate():
         except Exception as e:
             st.error(f"エラー: {e}")
 
+# Check for Local Cache
+cm = CredentialManager()
+has_cache = cm.is_cached(config.BITWARDEN_ITEM_NAME)
+
+# Authentication State Logic
+# Authenticated if:
+# 1. Master Password is in session (Manual Login)
+# OR
+# 2. Local Cache exists (Auto Login)
+is_manual_auth = bool(st.session_state.get('master_password') and global_session.master_password)
+is_authenticated = is_manual_auth or has_cache
+
 # 認証されていない場合のみ入力フォームを表示
-if not (st.session_state.get('master_password') and global_session.master_password):
+if not is_authenticated:
     add_keyboard_shortcuts()
     st.info(f"👇 Master Passwordを入力して、接続を開始してください。 (Alt+Shift+M)")
     
@@ -421,10 +442,16 @@ if not (st.session_state.get('master_password') and global_session.master_passwo
 def logout_callback():
     st.session_state['master_password'] = ""
     global_session.master_password = None
+    # Note: Logout currently only clears memory session. 
+    # It does NOT remove the local file cache (User can remove it via file system if needed)
+    # If we wanted "Log out" to mean "Clear Cache", we would call cm.clear_cache() here.
+    # For now, we assume "Logout" just resets the UI state, but if Cache exists, 
+    # the page reload will just auto-login again.
+    # To truly "Logout" in a cached world, we might need a "Forget Device" button.
+    # For this fix, we simply reload to let the state logic decide.
 
 # ステータス表示 & メインコンテンツ制御
-# SessionStateにあるパスワードが有効（かつGlobalとも整合している）場合に表示
-if st.session_state.get('master_password') and global_session.master_password:
+if is_authenticated:
     # ログイン済みヘッダー
     add_keyboard_shortcuts()
     # st.successの高さに合わせるため、少しCSSで調整するか、あるいはシンプルに並べる
@@ -441,8 +468,14 @@ if st.session_state.get('master_password') and global_session.master_password:
 
     h_col1, h_col2 = st.columns([3, 1])
     with h_col1:
-        st.success("✅ 認証済み")
+        if is_manual_auth:
+            st.success("✅ 認証済み (Bitwarden / Master Password)")
+        else:
+            st.success("✅ 認証済み (Local Cache)")
+            
     with h_col2:
+        # If cached, "Logout" is a bit ambiguous. Maybe "Reload"? 
+        # But keeping "Logout" for consistency.
         st.button("ログアウト", on_click=logout_callback, type="secondary", use_container_width=True)
     
     # === Main: Execution Console (Authenticated) ===
@@ -570,8 +603,8 @@ if st.session_state.get('master_password') and global_session.master_password:
         with dc2:
             # Logic for time step based on checkbox state (handled via session_state to allow placement below)
             use_minute_step_key = "use_minute_step"
-            # Default to False if not set
-            current_step_mode = st.session_state.get(use_minute_step_key, False)
+            # Default to True (1 minute step)
+            current_step_mode = st.session_state.get(use_minute_step_key, True)
             step_val = 60 if current_step_mode else 300
 
             # Define default time based on type
@@ -600,13 +633,19 @@ if st.session_state.get('master_password') and global_session.master_password:
                 with st.status("実行プロセス起動...", expanded=True) as status:
                     st.write("認証 & 同期中...")
                     # Streamlitスレッド内で実行（UIにログが出せる利点）
-                    # でも robust_job_runner をそのまま呼ぶと print出力になるので、UI用に見せるならここ書く
                     try:
-                        bw = BitwardenClient()
-                        key = bw.unlock(mp)
-                        bw.sync()
-                        st.write("自動操作実行中...")
-                        run_process(type_code, is_dry, key, headless=is_headless)
+                        cm = CredentialManager()
+                        if cm.is_cached(config.BITWARDEN_ITEM_NAME):
+                            st.write("キャッシュ検出: ロック解除をスキップします。")
+                            st.write("自動操作実行中...")
+                            run_process(type_code, is_dry, session_key=None, headless=is_headless)
+                        else:
+                            bw = BitwardenClient()
+                            key = bw.unlock(mp)
+                            bw.sync()
+                            st.write("自動操作実行中...")
+                            run_process(type_code, is_dry, key, headless=is_headless)
+                            
                         status.update(label="完了！", state="complete")
                         st.success("成功しました")
                     except Exception as e:
