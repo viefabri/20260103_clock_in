@@ -27,20 +27,15 @@ LBL_DETAIL = "細かく設定する (Alt+5)"
 # -----------------------------------------------------------------------------
 # 設定とセットアップ
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="TouchOnTime Automator", page_icon="⏰")
-# ログ設定
-log_dir = "logs"
-import os
-if not os.path.exists(log_dir):
-    os.makedirs(log_dir)
+from src.core.logger import setup_logging
 
-logging.basicConfig(
-    filename=f"{log_dir}/app.log",
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    force=True
-)
-logger = logging.getLogger("app")
+# -----------------------------------------------------------------------------
+# Configuration & Setup
+# -----------------------------------------------------------------------------
+st.set_page_config(page_title="TouchOnTime Automator", page_icon="⏰")
+
+# ログ設定 (集中管理モジュールを使用)
+logger = setup_logging("app")
 
 # スケジューラ (シングルトン)
 @st.cache_resource
