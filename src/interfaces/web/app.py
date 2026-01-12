@@ -5,13 +5,13 @@ import time
 import pandas as pd
 from datetime import datetime, date, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
-from src.core.usecase import run_process
+from src.core.services.job_service import JobService
 from src.core.bitwarden import BitwardenClient
 from src.core.credentials import CredentialManager
 from src.config import settings as config
 
 # -----------------------------------------------------------------------------
-# Constants & UI Labels (Single Source of Truth)
+# 定数とUIラベル (信頼できる唯一の情報源)
 # -----------------------------------------------------------------------------
 LBL_MP = "Master Password (Alt+Shift+M)"
 LBL_RUN = "今すぐ実行 (Shift+Enter)"
@@ -25,10 +25,10 @@ LBL_TIME = "Time (Alt+Shift+T)"
 LBL_DETAIL = "細かく設定する (Alt+5)"
 
 # -----------------------------------------------------------------------------
-# Configuration & Setup
+# 設定とセットアップ
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="TouchOnTime Automator", page_icon="⏰")
-# Logging Setup
+# ログ設定
 log_dir = "logs"
 import os
 if not os.path.exists(log_dir):
@@ -42,7 +42,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("app")
 
-# Scheduler (Singleton)
+# スケジューラ (シングルトン)
 @st.cache_resource
 def get_scheduler():
     scheduler = BackgroundScheduler()
@@ -51,7 +51,7 @@ def get_scheduler():
 
 scheduler = get_scheduler()
 
-# Global Persistence (Singleton)
+# グローバル永続化 (シングルトン)
 # ブラウザを閉じてもサーバーが生きている限り値を保持する
 @st.cache_resource
 class GlobalSession:
@@ -61,47 +61,9 @@ class GlobalSession:
 global_session = GlobalSession()
 
 # -----------------------------------------------------------------------------
-# Helper Functions (Background Logic)
+# ヘルパー関数 (バックグラウンドロジック)
 # -----------------------------------------------------------------------------
-def robust_job_runner(clock_type, is_dry_run, master_password, headless=False):
-    """
-    堅牢化された実行ランナー
-    常に Unlock -> Sync -> Run の順序で実行する
-    """
-    log_prefix = f"[{datetime.now().strftime('%H:%M:%S')}]"
-    msg_start = f"Job Started: {clock_type} (Dry={is_dry_run})"
-    print(f"{log_prefix} {msg_start}")
-    logging.info(msg_start)
 
-    try:
-        # Check Cache first
-        cm = CredentialManager()
-        if cm.is_cached(config.BITWARDEN_ITEM_NAME):
-            # Cache Hit: No master password needed
-            logging.info("Cache hit: Starting job without Bitwarden unlock.")
-            run_process(clock_type, is_dry_run, session_key=None, headless=headless)
-        else:
-            # Cache Miss: Unlock & Sync
-            # 1. Unlock (Always fresh)
-            bw = BitwardenClient()
-            session_key = bw.unlock(master_password)
-            if not session_key:
-                raise RuntimeError("Unlock failed (Session key is empty)")
-            
-            # 2. Sync (最新化)
-            bw.sync()
-            
-            # 3. Automation Run
-            run_process(clock_type, is_dry_run, session_key, headless=headless)
-        
-        msg_end = "Job Completed Successfully."
-        print(f"{log_prefix} {msg_end}")
-        logging.info(msg_end)
-        
-    except Exception as e:
-        msg_err = f"Job Failed: {e}"
-        print(f"{log_prefix} {msg_err}")
-        logging.error(msg_err)
 
 # -----------------------------------------------------------------------------
 # UI Layout
@@ -118,11 +80,11 @@ def robust_job_runner(clock_type, is_dry_run, master_password, headless=False):
 # CSS to hide anchor links (chain icon) for a cleaner look
 st.markdown("""
 <style>
-    /* Hide the anchor link (chain icon) in headers */
+    /* ヘッダーのアンカーリンク（チェーンアイコン）を非表示にする */
     a.anchor-link {
         display: none !important;
     }
-    /* For newer Streamlit versions where anchors might have different classes */
+    /* アンカーのクラスが異なる可能性がある新しいStreamlitバージョンのため */
     .stHeading a {
         display: none !important;
     }
@@ -131,9 +93,9 @@ st.markdown("""
 
 st.title("⏰ Touch On Time Automator")
 
-# === Shortcuts & Attribute Injection ===
+# === ショートカットと属性の注入 ===
 def add_keyboard_shortcuts():
-    # Pass Python constants to JS
+    # Pythonの定数をJSに渡す
     # 分離: 表示用ラベル(LABELS) と 検索用キーワード(KEYS)
     # これにより、UI上の装飾文字(Alt+...)が検索の邪魔をするのを防ぐ
     js_variables = f"""
@@ -171,20 +133,20 @@ def add_keyboard_shortcuts():
     
     const doc = window.parent.document;
     
-    // --- 1. Attribute Injection Helper ---
+    // --- 1. 属性注入ヘルパー ---
     function assignTestIds() {{
-        // Buttons
+        // ボタン
         assignIdByText(SEARCH_KEYS.RUN, 'btn-run-now');
         assignIdByText(SEARCH_KEYS.SCHEDULE, 'btn-add-schedule');
         
-        // Radio Labels
+        // ラジオボタンのラベル
         assignIdByText(SEARCH_KEYS.TYPE_IN, 'radio-in', 'label');
         assignIdByText(SEARCH_KEYS.TYPE_OUT, 'radio-out', 'label');
         assignIdByText(SEARCH_KEYS.MODE_TEST, 'radio-dry', 'label');
         assignIdByText(SEARCH_KEYS.MODE_LIVE, 'radio-live', 'label');
         assignIdByText(SEARCH_KEYS.DETAIL, 'chk-detail', 'label');
 
-        // Inputs
+        // 入力フィールド
         assignInputIdByLabel(SEARCH_KEYS.DATE, 'input-date');
         assignInputIdByLabel(SEARCH_KEYS.TIME, 'input-time');
         assignInputIdByLabel(SEARCH_KEYS.MP, 'input-mp', true); 
@@ -199,16 +161,16 @@ def add_keyboard_shortcuts():
         for (let i = 0; i < result.snapshotLength; i++) {{
             let el = result.snapshotItem(i);
             
-            // Heuristic: Skip if text is too long (likely a container, not the button/label itself)
+            // ヒューリスティック: テキストが長すぎる場合はスキップ（ボタンやラベルそのものではなくコンテナである可能性が高い）
             if (el.innerText && el.innerText.length > text.length + 50) continue;
 
             if (testId.startsWith('btn') || testId.startsWith('radio') || testId.startsWith('chk')) {{
                  let current = el;
                  let found = false;
-                 // Traverse up to find the clickable element
+                 // クリック可能な要素を見つけるまで上にトラバース
                  while(current && current !== doc.body) {{
                     if (current.tagName === 'BUTTON' || current.tagName === 'LABEL' || current.getAttribute('role') === 'button') {{
-                        // Avoid overwriting if possible, but ensure priority
+                        // 可能なら上書きしないが、優先度を保証する
                         if (!current.hasAttribute('data-testid') || current.getAttribute('data-testid') !== testId) {{
                             current.setAttribute('data-testid', testId);
                         }}
@@ -227,7 +189,7 @@ def add_keyboard_shortcuts():
     }}
 
     function assignInputIdByLabel(labelText, testId, isPassword=false) {{
-        // 1. Password Special Case
+        // 1. パスワードの特別対応
         if (isPassword) {{
            const inputs = Array.from(doc.getElementsByTagName('input'));
            const pw = inputs.find(i => i.type === 'password');
@@ -236,7 +198,7 @@ def add_keyboard_shortcuts():
 
         const lowerLabel = labelText.toLowerCase();
 
-        // 2. Try find by aria-label (Case Insensitive)
+        // 2. aria-labelでの検索を試みる (大文字小文字無視)
         const inputs = Array.from(doc.getElementsByTagName('input'));
         const ariaTarget = inputs.find(i => {{
             const al = i.getAttribute('aria-label');
@@ -248,14 +210,14 @@ def add_keyboard_shortcuts():
             return; 
         }}
 
-        // 3. Robust Search: Label with 'for' attribute
+        // 3. 堅牢な検索: 'for'属性を持つラベル
         const translate = "translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')";
         const xpathLabel = `//label[contains(${{translate}}, '${{lowerLabel}}')]`;
         const labelResult = doc.evaluate(xpathLabel, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
         
         for (let i = 0; i < labelResult.snapshotLength; i++) {{
              const label = labelResult.snapshotItem(i);
-             // Skip if label text is huge
+             // ラベルテキストが長すぎる場合はスキップ
              if (label.innerText && label.innerText.length > labelText.length + 50) continue;
 
              const forId = label.getAttribute('for');
@@ -269,8 +231,8 @@ def add_keyboard_shortcuts():
              }}
         }}
 
-        // 4. Fallback: Proximity Search
-        // Look for any element containing the text
+        // 4. フォールバック: 近接検索
+        // テキストを含む任意の要素を探す
         const xpathGeneric = `//*[self::p or self::div or self::span or self::label][contains(${{translate}}, '${{lowerLabel}}')]`;
         const result = doc.evaluate(xpathGeneric, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
         
@@ -281,10 +243,10 @@ def add_keyboard_shortcuts():
              let parent = labelEl.parentElement;
              let levels = 0;
              while(parent && levels < 5) {{
-                 // Try to find input, select, or textarea
+                 // input, select, または textarea を探す
                  const input = parent.querySelector('input');
                  if (input) {{ 
-                     // Only assign if not already assigned different ID
+                     // 異なるIDがまだ割り当てられていない場合のみ割り当て
                      if (!input.hasAttribute('data-testid') || input.getAttribute('data-testid') === testId) {{
                         input.setAttribute('data-testid', testId); 
                         console.log(`Success: Found ${{labelText}} via proximity`);
@@ -299,23 +261,23 @@ def add_keyboard_shortcuts():
         console.warn(`FAIL: Could not find input for label: ${{labelText}}`);
     }}
     
-    // --- 2. Event Handler using IDs ---
+    // --- 2. IDを使用したイベントハンドラ ---
     if (window.parent._clockInKeyHandler) {{
         doc.removeEventListener('keydown', window.parent._clockInKeyHandler);
     }}
 
     window.parent._clockInKeyHandler = function(e) {{
-        assignTestIds(); // Re-check IDs
+        assignTestIds(); // IDを再チェック
 
         const activeTag = doc.activeElement ? doc.activeElement.tagName.toLowerCase() : "";
         const activeType = doc.activeElement ? doc.activeElement.type : "";
         const isTypingSensitive = (activeType === 'password' || activeTag === 'textarea');
 
         if (e.altKey && e.shiftKey) {{
-             console.log(`Key Detected: Alt+Shift+${{e.key}}`); // DEBUG Log
+             console.log(`Key Detected: Alt+Shift+${e.key}`); // デバッグログ
         }}
 
-        // Actions
+        // アクション
         if (e.shiftKey && e.key === 'Enter') {{
             clickById('btn-run-now'); e.preventDefault();
         }}
@@ -323,7 +285,7 @@ def add_keyboard_shortcuts():
             if (!isTypingSensitive) {{ clickById('btn-add-schedule'); e.preventDefault(); }}
         }}
 
-        // Toggles & Focus
+        // トグルとフォーカス
         if (e.altKey) {{
             if (!e.shiftKey) {{
                     if (e.key === '1') clickById('radio-in');
@@ -342,16 +304,16 @@ def add_keyboard_shortcuts():
 
     doc.addEventListener('keydown', window.parent._clockInKeyHandler);
     
-    // Initial run to set IDs
+    // IDを設定するための初回実行
     assignTestIds();
-    // Observer to handle DOM changes (Streamlit Re-renders)
+    // DOMの変更を監視 (Streamlitの再描画対応)
     const observer = new MutationObserver(() => {{
         assignTestIds();
     }});
     observer.observe(doc.body, {{ childList: true, subtree: true }});
 
 
-    // Helpers
+    // ヘルパー
     function clickById(id) {{
         const el = doc.querySelector(`[data-testid="${{id}}"]`);
         if (el) el.click();
@@ -365,12 +327,12 @@ def add_keyboard_shortcuts():
     """
     components.html(js_code, height=0, width=0)
 
-# === Credential Management (Main Area) ===
-# Sync Global -> Local (Initialize State)
+# === 認証情報管理 (メインエリア) ===
+# Global -> Local の同期 (状態の初期化)
 if 'master_password' not in st.session_state:
     st.session_state['master_password'] = global_session.master_password if global_session.master_password else ""
 
-# Logic for Authentication (Reusable for button and Enter key)
+# 認証ロジック (ボタンとEnterキーで再利用可能)
 def authenticate():
     mp_input = st.session_state['master_password']
     if not mp_input:
@@ -387,21 +349,21 @@ def authenticate():
                 bw.sync()
                 s.update(label="認証成功！準備完了", state="complete")
                 time.sleep(1)
-                # No manual rerun needed if called from callback, but state update triggers rerun
+                # コールバックから呼ばれた場合手動rerunは不要だが、state更新がrerunをトリガーする
             else:
                 st.error("ロック解除に失敗しました")
         except Exception as e:
             st.error(f"エラー: {e}")
 
-# Check for Local Cache
+# ローカルキャッシュの確認
 cm = CredentialManager()
 has_cache = cm.is_cached(config.BITWARDEN_ITEM_NAME)
 
-# Authentication State Logic
-# Authenticated if:
-# 1. Master Password is in session (Manual Login)
+# 認証状態のロジック
+# 以下の条件で認証済みとする:
+# 1. セッションにマスターパスワードがある (手動ログイン)
 # OR
-# 2. Local Cache exists (Auto Login)
+# 2. ローカルキャッシュが存在する (自動ログイン)
 is_manual_auth = bool(st.session_state.get('master_password') and global_session.master_password)
 is_authenticated = is_manual_auth or has_cache
 
@@ -410,7 +372,7 @@ if not is_authenticated:
     add_keyboard_shortcuts()
     st.info(f"👇 Master Passwordを入力して、接続を開始してください。 (Alt+Shift+M)")
     
-    # CSS for vertical alignment of button to match text input height
+    # ボタンの垂直配置をテキスト入力の高さに合わせるCSS
     st.markdown("""
     <style>
     div.stButton > button:first-child {
@@ -423,7 +385,7 @@ if not is_authenticated:
     col1, col2 = st.columns([3, 1])
     with col1:
         # パスワード入力欄
-        # on_change=authenticate triggers the logic when Enter is pressed
+        # on_change=authenticate はEnterキー押下時にロジックをトリガーする
         mp_input_val = st.text_input(
             LBL_MP, 
             type="password",
@@ -434,33 +396,33 @@ if not is_authenticated:
         )
     with col2:
         # 接続確認ボタン
-        # type="secondary" (default) is neutral color. 
-        # on_click=authenticate triggers same logic.
+        # type="secondary" (デフォルト) は中立色
+        # on_click=authenticate は同じロジックをトリガーする
         st.button("接続確認", use_container_width=True, on_click=authenticate)
 
-# Callback function for logout
+# ログアウト用コールバック関数
 def logout_callback():
     st.session_state['master_password'] = ""
     global_session.master_password = None
-    # Note: Logout currently only clears memory session. 
-    # It does NOT remove the local file cache (User can remove it via file system if needed)
-    # If we wanted "Log out" to mean "Clear Cache", we would call cm.clear_cache() here.
-    # For now, we assume "Logout" just resets the UI state, but if Cache exists, 
-    # the page reload will just auto-login again.
-    # To truly "Logout" in a cached world, we might need a "Forget Device" button.
-    # For this fix, we simply reload to let the state logic decide.
+    # 注意: ログアウトは現在メモリセッションのみをクリアします。
+    # ローカルファイルキャッシュは削除しません（必要ならユーザーがファイルシステムから削除）。
+    # "ログアウト"で"キャッシュクリア"も行いたい場合は、ここで cm.clear_cache() を呼びます。
+    # 現在は、"ログアウト"はUI状態のリセットのみと仮定していますが、キャッシュが存在する場合、
+    # ページリロードで再度自動ログインします。
+    # キャッシュ利用下で本当に"ログアウト"するには、"デバイスを削除"ボタンが必要かもしれません。
+    # 今回の修正では、状態ロジックに任せるために単にリロードします。
 
 # ステータス表示 & メインコンテンツ制御
 if is_authenticated:
     # ログイン済みヘッダー
     add_keyboard_shortcuts()
     # st.successの高さに合わせるため、少しCSSで調整するか、あるいはシンプルに並べる
-    # Vertical alignment for logout button
+    # ログアウトボタンの垂直配置
     st.markdown("""
     <style>
-    /* Align logout button with the success message */
+    /* ログアウトボタンを成功メッセージに合わせる */
     div[data-testid="stHorizontalBlock"] > div:nth-child(2) button {
-        height: 3rem; /* Match st.success default height approx */
+        height: 3rem; /* st.successのデフォルトの高さ（概算） */
         margin-top: 2px;
     }
     </style>
@@ -474,11 +436,11 @@ if is_authenticated:
             st.success("✅ 認証済み (Local Cache)")
             
     with h_col2:
-        # If cached, "Logout" is a bit ambiguous. Maybe "Reload"? 
-        # But keeping "Logout" for consistency.
+        # キャッシュ済みの場合、"ログアウト"は少し曖昧です。"リロード"かも？
+        # しかし一貫性のために"ログアウト"のままにします。
         st.button("ログアウト", on_click=logout_callback, type="secondary", use_container_width=True)
     
-    # === Main: Execution Console (Authenticated) ===
+    # === メイン: 実行コンソール (認証済み) ===
     tab1, tab2, tab3, tab4 = st.tabs(["🚀 実行・予約", "📋 予約リスト", "📊 ログ概要", "📝 ログ詳細"])
 
     with tab3:
@@ -488,26 +450,25 @@ if is_authenticated:
             with open(log_file_path, "r") as f:
                 lines = f.readlines()
             
-            # Aggregate logs: Job Started -> Job Completed/Failed
-            # Use a dictionary to track running jobs by thread/context if possible, 
-            # but here we'll assume linear execution or close proximity matching.
-            # Simplified Logic: Iterate and combine "Started" with next "Completed/Failed"
+            # ログ集約: ジョブ開始 -> ジョブ完了/失敗
+            # 可能ならスレッド/コンテキストで実行中ジョブを追跡する辞書を使うべきだが、
+            # ここでは線形実行または近接マッチングを仮定する。
+            # 簡易ロジック: "Started" を反復し、次の "Completed/Failed" と結合する
             
             history_data = []
             current_job = {}
             
             for line in lines:
                 ts_str = line.split("[")[0].strip()
-                # Parse timestamp for sorting
-                # 2026-01-04 12:00:00,123
+                # ソート用にタイムスタンプをパース
                 try:
                     ts = datetime.strptime(ts_str.split(',')[0], "%Y-%m-%d %H:%M:%S")
                 except:
                     continue
 
                 if "Job Started" in line:
-                    # New Entry
-                    # If previous job incomplete, push it as running/unknown
+                    # 新規エントリ
+                    # 前のジョブが未完了なら、実行中/不明としてプッシュ
                     if current_job:
                         history_data.append(current_job)
                     
@@ -538,7 +499,7 @@ if is_authenticated:
                         current_job["End Time"] = ts.strftime('%H:%M:%S')
                         current_job["Status"] = "✅ Success"
                         history_data.append(current_job)
-                        current_job = {} # Reset
+                        current_job = {} # リセット
                 
                 elif "Job Failed" in line:
                     if current_job:
@@ -547,14 +508,14 @@ if is_authenticated:
                         current_job["End Time"] = ts.strftime('%H:%M:%S')
                         current_job["Status"] = f"❌ Error: {err}"
                         history_data.append(current_job)
-                        current_job = {} # Reset
+                        current_job = {} # リセット
 
-            # Append last job if still running
+            # まだ実行中なら最後のジョブを追加
             if current_job:
                  history_data.append(current_job)
 
             if history_data:
-                # Show newest first
+                # 最新を最初に表示
                 df = pd.DataFrame(history_data[::-1])
                 st.dataframe(df, use_container_width=True)
                 if st.button("ログ削除 (リセット)", key="clear_logs"):
@@ -589,36 +550,34 @@ if is_authenticated:
             mode = st.radio("Mode", [LBL_MODE_TEST, LBL_MODE_LIVE])
             is_dry = "Dry" in mode
             
-            # Headless Toggle
+            # ヘッドレストグル
             is_headless = st.checkbox("Headless Mode (ブラウザ非表示)", value=True)
 
         st.subheader("Schedule")
-        # Date/Time Logic (Stable Defaults)
-        # Layout adjustment: Equal columns for Date and Time
+        # 日付/時間ロジック (安定したデフォルト)
+        # レイアウト調整: 日付と時間を等しいカラム幅に
         dc1, dc2 = st.columns(2)
         
         with dc1:
             d_val = st.date_input(LBL_DATE, date.today())
         
         with dc2:
-            # Logic for time step based on checkbox state (handled via session_state to allow placement below)
+            # チェックボックスの状態に基づく時間ステップのロジック (下に配置するためにsession_state経由で処理)
             use_minute_step_key = "use_minute_step"
-            # Default to True (1 minute step)
+            # デフォルトはTrue (1分刻み)
             current_step_mode = st.session_state.get(use_minute_step_key, True)
             step_val = 60 if current_step_mode else 300
 
-            # Define default time based on type
+            # タイプに基づいてデフォルト時間を定義
             if type_code == "in":
                 def_t = datetime.strptime("08:55", "%H:%M").time()
             else:
                 def_t = datetime.strptime("18:05", "%H:%M").time()
 
-            # Time Input (aligned with Date Input now)
+            # 時間入力 (日付入力と整列)
             t_val = st.time_input(LBL_TIME, value=def_t, step=step_val)
             
-            # Checkbox placed BELOW Time input
-            # Changing this will trigger rerun, updating 'step' in next pass
-            st.checkbox(LBL_DETAIL, key=use_minute_step_key)
+            st.checkbox(LBL_DETAIL, key=use_minute_step_key, value=True)
 
         run_dt = datetime.combine(d_val, t_val)
 
@@ -634,17 +593,9 @@ if is_authenticated:
                     st.write("認証 & 同期中...")
                     # Streamlitスレッド内で実行（UIにログが出せる利点）
                     try:
-                        cm = CredentialManager()
-                        if cm.is_cached(config.BITWARDEN_ITEM_NAME):
-                            st.write("キャッシュ検出: ロック解除をスキップします。")
-                            st.write("自動操作実行中...")
-                            run_process(type_code, is_dry, session_key=None, headless=is_headless)
-                        else:
-                            bw = BitwardenClient()
-                            key = bw.unlock(mp)
-                            bw.sync()
-                            st.write("自動操作実行中...")
-                            run_process(type_code, is_dry, key, headless=is_headless)
+                        # JobServiceに委譲
+                        svc = JobService()
+                        svc.run_job(type_code, is_dry, mp, headless=is_headless)
                             
                         status.update(label="完了！", state="complete")
                         st.success("成功しました")
@@ -658,9 +609,9 @@ if is_authenticated:
                     st.error("未来の日時を指定してください")
                 else:
                     job_id = f"{type_code}_{run_dt.strftime('%Y%m%d%H%M%S')}"
-                    scheduler.add_job(
-                        robust_job_runner, # 堅牢版ランナーを指定
-                        'date',
+                    job = scheduler.add_job(
+                        JobService().run_job,
+                        trigger='date',
                         run_date=run_dt,
                         args=[type_code, is_dry, mp, is_headless], # MP, Headlessを渡す
                         id=job_id,
@@ -686,7 +637,7 @@ if is_authenticated:
                 st.divider()
 
 else:
-    # --- Not Authenticated State ---
-    # Already handled by top block
+    # --- 未認証状態 ---
+    # トップブロックですでに処理済み
     pass
-    # st.stop() is removed to prevent layout shift artifacts
+    # レイアウトシフトのアーティファクトを防ぐために st.stop() を削除

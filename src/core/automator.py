@@ -1,5 +1,5 @@
 """
-Selenium Automation Module for Touch On Time
+Touch On Time 用 Selenium 自動化モジュール
 """
 import time
 import logging

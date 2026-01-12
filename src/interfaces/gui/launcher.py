@@ -34,7 +34,7 @@ class LauncherApp(ctk.CTk):
         
         # ウィンドウ設定
         self.title("Touch On Time Launcher")
-        # self.geometry("400x350")  <- Removed to prevent double-rendering / jumping
+        # self.geometry("400x350")  <- 二重描画/ジャンプを防ぐために削除
         
         # 標準ウィンドウ (OS/WSLgによる管理)
         # 特別なハックは不要

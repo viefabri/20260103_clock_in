@@ -1,5 +1,5 @@
 """
-Bitwarden CLI Wrapper Module
+Bitwarden CLI ラッパーモジュール
 """
 import subprocess
 import json
@@ -67,11 +67,11 @@ class BitwardenClient:
         解除失敗時は None (または例外)
         """
         try:
-            # [Security Fix]
+            # [セキュリティ修正]
             # パスワードは引数ではなく標準入力(stdin)経由で渡すことで、
             # psコマンド等によるプロセスリストからの漏洩を防ぐ。
             #
-            # [Risk Acceptance]
+            # [リスク受容]
             # アーキテクチャ上、master_password はPythonプロセスのメモリ上に一時的に存在します。
             # 完全自動化要件のため、このトレードオフは受容されています。
             
@@ -82,7 +82,7 @@ class BitwardenClient:
                 [self.bw_path, "unlock", "--raw"],
                 input=input_pass,
                 text=True,
-                encoding="utf-8", # [Encoding] OSロケール依存防止
+                encoding="utf-8", # [エンコーディング] OSロケール依存防止
                 capture_output=True,
                 check=True
             )
