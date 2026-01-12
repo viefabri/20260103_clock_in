@@ -274,7 +274,7 @@ def add_keyboard_shortcuts():
         const isTypingSensitive = (activeType === 'password' || activeTag === 'textarea');
 
         if (e.altKey && e.shiftKey) {{
-             console.log(`Key Detected: Alt+Shift+${e.key}`); // デバッグログ
+             console.log(`Key Detected: Alt+Shift+${{e.key}}`); // デバッグログ
         }}
 
         // アクション
