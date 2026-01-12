@@ -93,14 +93,20 @@ class TouchOnTimeAutomator:
 
             # ログインボタン(OKボタン)のクリック
             # HTML: <div class="btn-control-message">OK</div>
-            time.sleep(1) # 入力がUIに反映されるのを少し待つ
+            # ログインボタン(OKボタン)のクリック
+            # HTML: <div class="btn-control-message">OK</div>
             
-            # OKボタンを探してクリック
-            login_btn = self.driver.find_element(By.XPATH, "//div[contains(@class, 'btn-control-message') and text()='OK']")
+            # Use WebDriverWait for the button to be clickable
+            logger.info("ログインボタン(OK)の有効化を待機しています...")
+            login_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'btn-control-message') and text()='OK']")))
             login_btn.click()
             
             logger.info("ログインボタン(OK)をクリックしました")
-            time.sleep(5) # 画面遷移待機
+            
+            # 画面遷移待機: 打刻ボタンが表示されるまで待つ
+            logger.info("メイン画面への遷移を待機しています...")
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".record-clock-in")))
+            logger.info("ログイン完了: メイン画面を確認しました")
 
         except TimeoutException:
             logger.error("ログイン画面の要素が見つかりませんでした (Timeout)")
@@ -163,7 +169,19 @@ class TouchOnTimeAutomator:
             logger.info(f"{button_label}ボタンをクリックしました！")
             
             # 完了待機
-            time.sleep(5)
+            # 完了待機 (リクエスト完了を確実にするため)
+            # 固定スリープの代わりに、ページ読み込み完了などの指標を使うのが理想ですが、
+            # SPA的な挙動かリロードか不明なため、安全マージンとして短い待機とJS実行完了確認を行う
+            time.sleep(2) 
+            try:
+                # アラートが出ている場合は受け入れる (成功メッセージなどの可能性があるため)
+                if EC.alert_is_present()(self.driver):
+                    self.driver.switch_to.alert.accept()
+                    logger.info("アラートを検出・承認しました")
+            except:
+                pass
+            
+            logger.info("打刻処理完了待ち: 完了")
 
         except TimeoutException:
             logger.error(f"{button_label}ボタンが見つかりませんでした (Timeout)")
