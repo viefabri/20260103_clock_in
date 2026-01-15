@@ -36,6 +36,8 @@ st.set_page_config(page_title="TouchOnTime Automator", page_icon="⏰")
 
 # ログ設定 (集中管理モジュールを使用)
 logger = setup_logging("app")
+log_dir = "logs"
+import os
 
 # スケジューラ (シングルトン)
 @st.cache_resource

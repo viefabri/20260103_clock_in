@@ -12,7 +12,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
 from webdriver_manager.chrome import ChromeDriverManager
 
 from src.config import settings as config
@@ -151,6 +151,19 @@ class TouchOnTimeAutomator:
             target_css = f".record-{button_type}"
             
             wait = WebDriverWait(self.driver, 10)
+
+            # オーバーレイ（通知メッセージ）がある場合は消えるのを待つ
+            try:
+                # notification_contentが表示されている場合、非表示になるまで最大5秒待つ
+                wait_overlay = WebDriverWait(self.driver, 5)
+                wait_overlay.until(EC.invisibility_of_element_located((By.ID, "notification_content")))
+            except TimeoutException:
+                # タイムアウトしても処理は続行する（次のステップでJSクリックなどでカバー）
+                logger.warning("通知オーバーレイが消えませんが、処理を続行します。")
+            except Exception:
+                # その他のエラーは無視
+                pass
+
             target_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, target_css)))
             
             logger.info(f"{button_label}ボタンを発見しました")
@@ -165,7 +178,12 @@ class TouchOnTimeAutomator:
             # -----------------------------------------------------------------
 
             # 本番動作 (親要素あるいはこの要素自体がクリッカブル)
-            target_button.click()
+            try:
+                target_button.click()
+            except ElementClickInterceptedException:
+                logger.warning(f"{button_label}ボタンのクリックが阻害されました。JavaScriptクリックを試行します。")
+                self.driver.execute_script("arguments[0].click();", target_button)
+            
             logger.info(f"{button_label}ボタンをクリックしました！")
             
             # 完了待機
